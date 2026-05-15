@@ -1,0 +1,29 @@
+{
+  "name": "clasp-sh",
+  "version": "0.1.0",
+  "type": "module",
+  "module": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "bun test",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/bun": "latest",
+    "tsdown": "^0.12.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
