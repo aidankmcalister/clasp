@@ -1,0 +1,130 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+@import "tailwindcss";
+@import "fumadocs-ui/css/solar.css";
+@import "fumadocs-ui/css/preset.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Warm-stone palette — source of truth */
+  --color-page-bg: #f6f4ee;
+  --color-page-surface: #fbfaf4;
+  --color-page-hover: #ebe9e1;
+  --color-page-border: #d3d1c8;
+  --color-page-border-soft: #e5e3da;
+  --color-page-ink: #16161a;
+  --color-page-mid: #44443f;
+  --color-page-muted: #6b695f;
+  --color-page-faint: #b0aea4;
+  --color-page-line: #d3d1c8;
+
+  --animate-fade: fade 220ms ease both;
+  @keyframes fade {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+/* Fumadocs UI tokens aliased to page tokens — light mode default */
+:root {
+  --color-fd-background: var(--color-page-bg);
+  --color-fd-foreground: var(--color-page-ink);
+  --color-fd-card: var(--color-page-surface);
+  --color-fd-card-foreground: var(--color-page-ink);
+  --color-fd-popover: var(--color-page-bg);
+  --color-fd-popover-foreground: var(--color-page-ink);
+  --color-fd-muted: var(--color-page-hover);
+  --color-fd-muted-foreground: var(--color-page-muted);
+  --color-fd-border: var(--color-page-border-soft);
+  --color-fd-primary: var(--color-page-ink);
+  --color-fd-primary-foreground: var(--color-page-bg);
+  --color-fd-secondary: var(--color-page-surface);
+  --color-fd-secondary-foreground: var(--color-page-ink);
+  --color-fd-accent: var(--color-page-hover);
+  --color-fd-accent-foreground: var(--color-page-ink);
+  --color-fd-ring: var(--color-page-ink);
+}
+
+/* Dark mode: flip page tokens; fd-* tokens follow via var() */
+.dark {
+  --color-page-bg: #0b0b0d;
+  --color-page-surface: #131316;
+  --color-page-hover: #16161a;
+  --color-page-border: #1f1f24;
+  --color-page-border-soft: #16161a;
+  --color-page-ink: #ebeae6;
+  --color-page-mid: #b5b3ad;
+  --color-page-muted: #807e78;
+  --color-page-faint: #47464a;
+  --color-page-line: #1f1f24;
+}
+
+/* Base styles */
+html {
+  scrollbar-gutter: stable;
+}
+
+body {
+  background-color: var(--color-page-bg);
+  color: var(--color-page-ink);
+  font-family: var(--font-mono);
+  font-feature-settings: "ss01", "cv01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition:
+    background 0.22s ease,
+    color 0.22s ease,
+    border-color 0.22s ease;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-page-ink);
+  outline-offset: 2px;
+}
+
+/* Form controls have their own focus indicators — opt out of the global outline */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="combobox"]:focus-visible,
+[role="searchbox"]:focus-visible {
+  outline: none;
+}
+
+::selection {
+  background: var(--color-page-ink);
+  color: var(--color-page-bg);
+}
+
+/* Sticky nav background — bone with 92% opacity over backdrop blur */
+.nav-bg {
+  background: color-mix(in srgb, var(--color-page-bg) 92%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}

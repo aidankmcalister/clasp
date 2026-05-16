@@ -1,4 +1,4 @@
-import { sendWebhook } from "./send.ts";
+import { send } from "./send.ts";
 import type {
   SendOptions,
   SendResult,
@@ -6,10 +6,9 @@ import type {
   WebhookConfig,
   WebhookEvent,
 } from "./types.ts";
-import { verifyWebhook } from "./verify.ts";
+import { verify } from "./verify.ts";
 
-export { verifyWebhook } from "./verify.ts";
-export { sendWebhook } from "./send.ts";
+export { WebhookError, type WebhookErrorCode } from "./errors.ts";
 export type {
   AttemptResult,
   SendOptions,
@@ -19,21 +18,21 @@ export type {
   WebhookEvent,
 } from "./types.ts";
 
-export function createWebhooks(config: WebhookConfig): {
-  send: (
-    url: string,
-    event: WebhookEvent,
-    options?: SendOptions,
-  ) => Promise<SendResult>;
+export interface Clasp<E extends WebhookEvent> {
+  send: (url: string, event: E, options?: SendOptions) => Promise<SendResult>;
   verify: (
-    headers: Headers | Record<string, string>,
-    body: string,
-    options?: Omit<VerifyOptions, "secret">,
-  ) => Promise<WebhookEvent>;
-} {
+    source:
+      | Request
+      | { headers: Headers | Record<string, string>; body: string },
+    options?: VerifyOptions,
+  ) => Promise<E>;
+}
+
+export function clasp<E extends WebhookEvent = WebhookEvent>(
+  config: WebhookConfig,
+): Clasp<E> {
   return {
-    send: (url, event, options) => sendWebhook(url, event, config, options),
-    verify: (headers, body, options) =>
-      verifyWebhook(headers, body, { ...options, secret: config.secret }),
+    send: (url, event, options) => send<E>(url, event, config.secret, options),
+    verify: (source, options) => verify<E>(source, config.secret, options),
   };
 }

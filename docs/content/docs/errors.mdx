@@ -1,0 +1,74 @@
+---
+title: Errors
+description: Typed error handling with WebhookError.
+icon: TriangleAlert
+---
+
+`verify()` throws `WebhookError` on any verification failure. Each error has a typed `code` — no string parsing.
+
+## Basic handling
+
+```ts
+import { WebhookError } from "clasp-sh";
+
+try {
+  const event = await webhooks.verify(request);
+} catch (err) {
+  if (err instanceof WebhookError) {
+    console.error(err.code);    // typed
+    console.error(err.message); // human-readable
+  }
+}
+```
+
+## Switch on the code
+
+```ts
+import { WebhookError } from "clasp-sh";
+
+try {
+  await webhooks.verify(request);
+} catch (err) {
+  if (err instanceof WebhookError) {
+    switch (err.code) {
+      case "missing_headers":
+      case "invalid_timestamp":
+      case "invalid_body":
+        return Response.json({ error: err.code }, { status: 400 });
+      case "stale_timestamp":
+      case "invalid_signature":
+        return Response.json({ error: err.code }, { status: 401 });
+    }
+  }
+  throw err;
+}
+```
+
+## Codes
+
+| Code | When it's thrown |
+|---|---|
+| `missing_headers` | One of `webhook-id`, `webhook-timestamp`, or `webhook-signature` is absent |
+| `invalid_timestamp` | The `webhook-timestamp` header isn't a finite number |
+| `stale_timestamp` | The timestamp is outside the tolerance window (default 5 minutes) |
+| `invalid_signature` | HMAC verification failed |
+| `invalid_body` | The body isn't valid JSON or is missing a `type` field |
+
+## Type
+
+```ts
+class WebhookError extends Error {
+  code: WebhookErrorCode;
+}
+
+type WebhookErrorCode =
+  | "missing_headers"
+  | "invalid_timestamp"
+  | "stale_timestamp"
+  | "invalid_signature"
+  | "invalid_body";
+```
+
+## What about send errors?
+
+`send()` does **not** throw on HTTP failure. It returns a `SendResult` with `success: false` and the full `attempts` array. See [Sending](/docs/sending).

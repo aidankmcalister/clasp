@@ -1,0 +1,90 @@
+---
+title: Typed events
+description: End-to-end type safety with a discriminated union.
+icon: Braces
+---
+
+Pass a discriminated union as the type parameter to `clasp<E>()` and you get type-checked sends plus narrowable verified events.
+
+## Define your events
+
+```ts
+type AppEvents =
+  | { type: "user.created"; data: { id: string; email: string } }
+  | { type: "user.deleted"; data: { id: string } }
+  | { type: "order.paid"; data: { orderId: string; amount: number } };
+```
+
+## Use the generic
+
+```ts
+const webhooks = clasp<AppEvents>({ secret: SECRET });
+```
+
+That's it. Both `send` and `verify` are now typed against `AppEvents`.
+
+## Typed sends
+
+```ts
+await webhooks.send(url, {
+  type: "user.created",
+  data: { id: "usr_1", email: "a@b.com" }, // ✓
+});
+
+await webhooks.send(url, {
+  type: "user.created",
+  data: { id: "usr_1" }, // ✗ missing 'email'
+});
+
+await webhooks.send(url, {
+  type: "user.unknown", // ✗ not in union
+  data: {},
+});
+```
+
+## Narrowable verified events
+
+```ts
+const event = await webhooks.verify(request);
+
+switch (event.type) {
+  case "user.created":
+    event.data.email; // string
+    break;
+  case "order.paid":
+    event.data.amount; // number
+    break;
+}
+```
+
+## Sharing types
+
+Keep a shared `events.ts` file imported by both sender and receiver:
+
+```ts
+// events.ts
+export type AppEvents =
+  | { type: "user.created"; data: { id: string; email: string } }
+  | { type: "user.deleted"; data: { id: string } };
+```
+
+If sender and receiver live in different repos, publish it as a small types-only package or generate it from a single schema.
+
+<Callout>
+  Types are a compile-time check. clasp validates at runtime that the body is
+  JSON and has a `type` field — it does not validate `data` against your schema.
+  If untrusted data is a concern, add a runtime validator (Zod, Valibot) after
+  `verify` returns.
+</Callout>
+
+## Default typing
+
+If you don't pass a type parameter, the event is the generic `WebhookEvent`:
+
+```ts
+type WebhookEvent = {
+  id?: string;
+  type: string;
+  data: unknown;
+};
+```

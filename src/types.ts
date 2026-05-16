@@ -28,6 +28,5 @@ export interface SendOptions {
 }
 
 export interface VerifyOptions {
-  secret: string;
   tolerance?: number;
 }

@@ -1,3 +1,7 @@
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface RetryConfig {
   maxRetries?: number;
   baseDelay?: number;
@@ -23,7 +27,7 @@ export async function withRetry<T>(
 
   for (let i = 0; i <= maxRetries; i++) {
     if (i > 0) {
-      await Bun.sleep(Math.min(baseDelay * 2 ** (i - 1), maxDelay));
+      await sleep(Math.min(baseDelay * 2 ** (i - 1), maxDelay));
     }
 
     let outcome: Outcome<T>;

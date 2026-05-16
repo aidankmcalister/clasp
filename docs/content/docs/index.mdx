@@ -1,0 +1,84 @@
+---
+title: Getting started
+description: An open source tool for webhooks. Two functions. That's it.
+icon: Rocket
+---
+
+clasp is an open source tool for webhooks.
+
+It sends them. It receives them. You do whatever you want with them.
+
+That's the whole library. No queue, no database, no SaaS, no dashboard, no bill.
+
+## Two halves
+
+Every clasp usage falls into one of two roles. Pick whichever fits what you're building:
+
+- **Outgoing** — you want *another* service to do something when something happens on yours. Sign and POST a webhook to *their* URL. See [Sending](/docs/sending).
+- **Incoming** — you want *your* service to do something when something happens on someone else's. Hand them your URL; they POST to you; verify and act on what arrived. See [Receiving](/docs/receiving).
+
+Most apps end up doing both.
+
+## Why bother
+
+- **Zero runtime dependencies.** Web Crypto API only.
+- **Takes any Request.** `verify(request)` works in Hono, Next, Bun, Workers, Deno — whatever hands you a `Request`.
+- **Typed errors.** `WebhookError` with `.code`. Stop grepping error messages.
+- **Standard Webhooks.** Follows [the spec](https://www.standardwebhooks.com/). Plays nice with everyone else who does.
+
+## Install
+
+```bash
+bun add clasp-sh
+```
+
+`npm`, `pnpm`, `yarn` too. It doesn't care.
+
+## Make a secret
+
+clasp doesn't generate secrets. Use any standard tool:
+
+```bash
+openssl rand -base64 32
+```
+
+Save it somewhere safe. Both sides need the same one.
+
+## Make a client
+
+```ts
+import { clasp } from "clasp-sh";
+
+const webhooks = clasp({ secret: process.env.WEBHOOK_SECRET });
+```
+
+Now you have `{ send, verify }`. That's the whole API.
+
+## Send one
+
+```ts
+const result = await webhooks.send("https://example.com/webhook", {
+  type: "user.created",
+  data: { id: "usr_123" },
+});
+
+console.log(result.success); // true
+```
+
+## Receive one
+
+```ts
+const event = await webhooks.verify(request);
+console.log(event.type); // "user.created"
+```
+
+Done. Go ship.
+
+## Then what
+
+<Cards>
+  <Card title="Sending" href="/docs/sending" description="Retries, options, return shape." />
+  <Card title="Receiving" href="/docs/receiving" description="Framework examples, tolerance, idempotency." />
+  <Card title="Errors" href="/docs/errors" description="WebhookError codes and what they mean." />
+  <Card title="Typed events" href="/docs/typed-events" description="End-to-end type safety with one generic." />
+</Cards>

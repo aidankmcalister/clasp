@@ -1,0 +1,14 @@
+{
+  "title": "Docs",
+  "pages": [
+    "index",
+    "---Library---",
+    "sending",
+    "receiving",
+    "errors",
+    "secrets",
+    "typed-events",
+    "---Reference---",
+    "api"
+  ]
+}

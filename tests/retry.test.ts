@@ -1,9 +1,16 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { withRetry } from "../src/retry.ts";
 
+function instantSleep() {
+  return spyOn(globalThis, "setTimeout").mockImplementation((cb) => {
+    (cb as () => void)();
+    return 0 as unknown as ReturnType<typeof setTimeout>;
+  });
+}
+
 describe("withRetry", () => {
   test("stops immediately when shouldStop returns true on first attempt", async () => {
-    const sleep = spyOn(Bun, "sleep").mockResolvedValue();
+    const sleep = instantSleep();
     let calls = 0;
     await withRetry(
       async () => {
@@ -19,7 +26,7 @@ describe("withRetry", () => {
   });
 
   test("retries up to maxRetries times on failure", async () => {
-    const sleep = spyOn(Bun, "sleep").mockResolvedValue();
+    const sleep = instantSleep();
     let calls = 0;
     const outcomes = await withRetry(
       async () => {
@@ -36,7 +43,7 @@ describe("withRetry", () => {
   });
 
   test("uses exponential backoff delays", async () => {
-    const sleep = spyOn(Bun, "sleep").mockResolvedValue();
+    const sleep = instantSleep();
     await withRetry(
       async () => {
         throw new Error("fail");
@@ -44,14 +51,14 @@ describe("withRetry", () => {
       () => false,
       { maxRetries: 3, baseDelay: 1000, maxDelay: 30_000 },
     );
-    expect(sleep).toHaveBeenNthCalledWith(1, 1000);
-    expect(sleep).toHaveBeenNthCalledWith(2, 2000);
-    expect(sleep).toHaveBeenNthCalledWith(3, 4000);
+    expect(sleep.mock.calls[0]?.[1]).toBe(1000);
+    expect(sleep.mock.calls[1]?.[1]).toBe(2000);
+    expect(sleep.mock.calls[2]?.[1]).toBe(4000);
     sleep.mockRestore();
   });
 
   test("caps delay at maxDelay", async () => {
-    const sleep = spyOn(Bun, "sleep").mockResolvedValue();
+    const sleep = instantSleep();
     await withRetry(
       async () => {
         throw new Error("fail");
@@ -59,13 +66,13 @@ describe("withRetry", () => {
       () => false,
       { maxRetries: 4, baseDelay: 1000, maxDelay: 3000 },
     );
-    const calls = sleep.mock.calls.map((c) => c[0]);
-    expect(Math.max(...(calls as number[]))).toBe(3000);
+    const delays = sleep.mock.calls.map((c) => c[1] as number);
+    expect(Math.max(...delays)).toBe(3000);
     sleep.mockRestore();
   });
 
   test("stops early when shouldStop returns true mid-retry", async () => {
-    const sleep = spyOn(Bun, "sleep").mockResolvedValue();
+    const sleep = instantSleep();
     let calls = 0;
     const outcomes = await withRetry(
       async () => {
@@ -81,7 +88,7 @@ describe("withRetry", () => {
   });
 
   test("records errors in outcomes", async () => {
-    const sleep = spyOn(Bun, "sleep").mockResolvedValue();
+    const sleep = instantSleep();
     const outcomes = await withRetry(
       async () => {
         throw new Error("network error");

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { WebhookError } from "../src/errors.ts";
 import { signPayload } from "../src/sign.ts";
-import { verifyWebhook } from "../src/verify.ts";
+import { verify } from "../src/verify.ts";
 
 const SECRET = "test-secret";
 const ID = "evt_abc";
@@ -19,35 +20,54 @@ async function makeHeaders(
   };
 }
 
-describe("verifyWebhook", () => {
-  test("returns parsed event for valid webhook", async () => {
+describe("verify", () => {
+  test("returns parsed event for valid webhook (object source)", async () => {
     const headers = await makeHeaders();
-    const event = await verifyWebhook(headers, BODY, { secret: SECRET });
+    const event = await verify({ headers, body: BODY }, SECRET);
     expect(event.type).toBe("order.paid");
     expect(event.data).toEqual({ amount: 100 });
   });
 
-  test("accepts Headers instance", async () => {
-    const plain = await makeHeaders();
-    const headers = new Headers(plain);
-    const event = await verifyWebhook(headers, BODY, { secret: SECRET });
+  test("accepts a Request directly", async () => {
+    const headers = await makeHeaders();
+    const req = new Request("https://example.com/webhook", {
+      method: "POST",
+      headers,
+      body: BODY,
+    });
+    const event = await verify(req, SECRET);
     expect(event.type).toBe("order.paid");
   });
 
-  test("throws on missing headers", async () => {
-    await expect(verifyWebhook({}, BODY, { secret: SECRET })).rejects.toThrow(
-      "Missing required webhook headers",
-    );
+  test("accepts Headers instance inside object source", async () => {
+    const plain = await makeHeaders();
+    const headers = new Headers(plain);
+    const event = await verify({ headers, body: BODY }, SECRET);
+    expect(event.type).toBe("order.paid");
   });
 
-  test("throws on wrong secret", async () => {
+  test("throws WebhookError on missing headers", async () => {
+    try {
+      await verify({ headers: {}, body: BODY }, SECRET);
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(WebhookError);
+      expect((err as WebhookError).code).toBe("missing_headers");
+    }
+  });
+
+  test("throws invalid_signature on wrong secret", async () => {
     const headers = await makeHeaders();
-    await expect(
-      verifyWebhook(headers, BODY, { secret: "wrong" }),
-    ).rejects.toThrow("Invalid webhook signature");
+    try {
+      await verify({ headers, body: BODY }, "wrong");
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(WebhookError);
+      expect((err as WebhookError).code).toBe("invalid_signature");
+    }
   });
 
-  test("throws when timestamp exceeds tolerance", async () => {
+  test("throws stale_timestamp when too old", async () => {
     const staleTs = Math.floor(Date.now() / 1000) - 400;
     const sig = await signPayload(ID, staleTs, BODY, SECRET);
     const headers = {
@@ -55,9 +75,13 @@ describe("verifyWebhook", () => {
       "webhook-timestamp": String(staleTs),
       "webhook-signature": sig,
     };
-    await expect(
-      verifyWebhook(headers, BODY, { secret: SECRET }),
-    ).rejects.toThrow("too old");
+    try {
+      await verify({ headers, body: BODY }, SECRET);
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(WebhookError);
+      expect((err as WebhookError).code).toBe("stale_timestamp");
+    }
   });
 
   test("respects custom tolerance", async () => {
@@ -68,21 +92,23 @@ describe("verifyWebhook", () => {
       "webhook-timestamp": String(staleTs),
       "webhook-signature": sig,
     };
-    const event = await verifyWebhook(headers, BODY, {
-      secret: SECRET,
+    const event = await verify({ headers, body: BODY }, SECRET, {
       tolerance: 600,
     });
     expect(event.type).toBe("order.paid");
   });
 
-  test("throws on tampered body", async () => {
+  test("throws invalid_signature on tampered body", async () => {
     const headers = await makeHeaders();
-    await expect(
-      verifyWebhook(headers, '{"type":"evil","data":{}}', { secret: SECRET }),
-    ).rejects.toThrow("Invalid webhook signature");
+    try {
+      await verify({ headers, body: '{"type":"evil","data":{}}' }, SECRET);
+      throw new Error("expected throw");
+    } catch (err) {
+      expect((err as WebhookError).code).toBe("invalid_signature");
+    }
   });
 
-  test("throws when body missing type field", async () => {
+  test("throws invalid_body when missing type field", async () => {
     const noTypeBody = JSON.stringify({ data: {} });
     const ts = Math.floor(Date.now() / 1000);
     const sig = await signPayload(ID, ts, noTypeBody, SECRET);
@@ -91,8 +117,25 @@ describe("verifyWebhook", () => {
       "webhook-timestamp": String(ts),
       "webhook-signature": sig,
     };
-    await expect(
-      verifyWebhook(headers, noTypeBody, { secret: SECRET }),
-    ).rejects.toThrow("missing 'type'");
+    try {
+      await verify({ headers, body: noTypeBody }, SECRET);
+      throw new Error("expected throw");
+    } catch (err) {
+      expect((err as WebhookError).code).toBe("invalid_body");
+    }
+  });
+
+  test("throws invalid_timestamp for non-numeric timestamp", async () => {
+    const headers = {
+      "webhook-id": ID,
+      "webhook-timestamp": "not-a-number",
+      "webhook-signature": "v1,whatever",
+    };
+    try {
+      await verify({ headers, body: BODY }, SECRET);
+      throw new Error("expected throw");
+    } catch (err) {
+      expect((err as WebhookError).code).toBe("invalid_timestamp");
+    }
   });
 });

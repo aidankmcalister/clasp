@@ -1,0 +1,148 @@
+---
+title: API reference
+description: Complete public surface of clasp-sh.
+icon: BookOpen
+---
+
+clasp exports three runtime values and a handful of types.
+
+## `clasp<E>(config)`
+
+Creates a webhooks client bound to a secret.
+
+```ts
+function clasp<E extends WebhookEvent = WebhookEvent>(
+  config: { secret: string }
+): {
+  send(url: string, event: E, options?: SendOptions): Promise<SendResult>;
+  verify(
+    source: Request | { headers: Headers | Record<string, string>; body: string },
+    options?: VerifyOptions
+  ): Promise<E>;
+};
+```
+
+### `client.send(url, event, options?)`
+
+Sign and POST a webhook. Retries non-2xx responses with exponential backoff. Never throws on HTTP failure — returns a `SendResult` instead.
+
+| Param | Type | Description |
+|---|---|---|
+| `url` | `string` | Destination URL |
+| `event` | `E` | Event payload — must include `type: string` |
+| `options` | `SendOptions` | Optional overrides |
+
+### `client.verify(source, options?)`
+
+Verify an incoming webhook. Returns the parsed event, or throws `WebhookError`.
+
+| Param | Type | Description |
+|---|---|---|
+| `source` | `Request \| { headers, body }` | A Web standard `Request`, or a headers/body pair |
+| `options` | `VerifyOptions` | Optional overrides |
+
+## `WebhookError`
+
+Thrown by `verify` on any verification failure.
+
+```ts
+class WebhookError extends Error {
+  code: WebhookErrorCode;
+  message: string;
+}
+
+type WebhookErrorCode =
+  | "missing_headers"
+  | "invalid_timestamp"
+  | "stale_timestamp"
+  | "invalid_signature"
+  | "invalid_body";
+```
+
+| Code | When it's thrown |
+|---|---|
+| `missing_headers` | One of the required webhook headers is absent |
+| `invalid_timestamp` | The `webhook-timestamp` header isn't a finite number |
+| `stale_timestamp` | The timestamp is outside the tolerance window |
+| `invalid_signature` | HMAC verification failed |
+| `invalid_body` | The body isn't valid JSON or is missing a `type` field |
+
+## Types
+
+### `WebhookEvent`
+
+The default event shape and the constraint for the `E` type parameter.
+
+```ts
+type WebhookEvent = {
+  id?: string;
+  type: string;
+  data: unknown;
+};
+```
+
+### `SendOptions`
+
+```ts
+type SendOptions = {
+  maxRetries?: number;      // default: 3
+  baseDelay?: number;       // default: 1000 (ms)
+  maxDelay?: number;        // default: 30000 (ms)
+  headers?: Record<string, string>;
+};
+```
+
+### `SendResult`
+
+```ts
+type SendResult = {
+  success: boolean;
+  statusCode?: number;
+  attempts: AttemptResult[];
+};
+```
+
+### `AttemptResult`
+
+```ts
+type AttemptResult = {
+  timestamp: number;     // ms since epoch
+  statusCode?: number;
+  error?: string;
+};
+```
+
+### `VerifyOptions`
+
+```ts
+type VerifyOptions = {
+  tolerance?: number;    // default: 300 (seconds)
+};
+```
+
+### `WebhookConfig`
+
+```ts
+type WebhookConfig = {
+  secret: string;
+};
+```
+
+## Defaults
+
+| | |
+|---|---|
+| Max retries | `3` |
+| Backoff | `1s → 2s → 4s → ...` capped at `30s` |
+| Timestamp tolerance | `5 minutes` (300s) |
+| Algorithm | `HMAC-SHA256` |
+| Signature format | `v1,{base64}` |
+
+## Spec
+
+clasp implements [Standard Webhooks](https://www.standardwebhooks.com/):
+
+- Headers: `webhook-id`, `webhook-timestamp`, `webhook-signature`
+- Signed payload: `{id}.{timestamp}.{body}`
+- The `webhook-signature` header may contain multiple signatures separated by spaces. clasp accepts the message if any one signature verifies.
+- Secrets prefixed with `whsec_` are base64-decoded; otherwise the raw bytes are used.

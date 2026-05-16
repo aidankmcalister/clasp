@@ -1,0 +1,101 @@
+---
+title: Sending
+description: Sign and POST webhooks with automatic retries.
+icon: Send
+---
+
+Use this when you're the **outgoing** side — your service is notifying someone else.
+
+`webhooks.send()` signs your payload, POSTs it to their URL, and retries on failure.
+
+## Basic usage
+
+```ts
+const result = await webhooks.send("https://example.com/webhook", {
+  type: "user.created",
+  data: { id: "usr_123" },
+});
+
+result.success;    // boolean
+result.statusCode; // 200
+result.attempts;   // [{ timestamp, statusCode }]
+```
+
+`send()` never throws on HTTP failure — it returns a `SendResult`. You decide what to do.
+
+## Headers it sends
+
+| Header | Value |
+|---|---|
+| `content-type` | `application/json` |
+| `webhook-id` | A fresh UUID (or `event.id` if you provide one) |
+| `webhook-timestamp` | Unix seconds at send time |
+| `webhook-signature` | `v1,<base64-hmac>` |
+
+## Retries
+
+clasp retries failed deliveries **3 times** by default with exponential backoff: 1s → 2s → 4s, capped at 30s.
+
+Override per call:
+
+```ts
+await webhooks.send(url, event, {
+  maxRetries: 5,
+  baseDelay: 500,
+  maxDelay: 60_000,
+});
+```
+
+## Options
+
+| Option | Default | Description |
+|---|---|---|
+| `maxRetries` | `3` | Maximum retry attempts after the initial request |
+| `baseDelay` | `1000` | Initial backoff delay in milliseconds |
+| `maxDelay` | `30000` | Maximum backoff delay in milliseconds |
+| `headers` | — | Extra request headers to merge in |
+
+## Custom event IDs
+
+By default each send generates a fresh UUID. Provide your own for idempotency:
+
+```ts
+await webhooks.send(url, {
+  id: "evt_my_custom_id",
+  type: "user.created",
+  data: { id: "usr_123" },
+});
+```
+
+The receiver can deduplicate by `webhook-id`.
+
+## Extra headers
+
+```ts
+await webhooks.send(url, event, {
+  headers: {
+    "x-trace-id": traceId,
+    authorization: `Bearer ${token}`,
+  },
+});
+```
+
+The signing headers cannot be overridden.
+
+## Return shape
+
+```ts
+type SendResult = {
+  success: boolean;
+  statusCode?: number;
+  attempts: AttemptResult[];
+};
+
+type AttemptResult = {
+  timestamp: number;     // ms since epoch
+  statusCode?: number;   // set if the request completed
+  error?: string;        // set if the request threw
+};
+```
+
+Inspect `attempts` to log every delivery attempt for debugging.

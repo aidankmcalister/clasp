@@ -7,13 +7,15 @@ and a standalone send script as the sender.
 
 ## 1. Link clasp-sh
 
-In this repo:
+In this repo, build then link:
 
 ```bash
+bun run build
 bun link
 ```
 
-> The `"bun"` export condition points straight to `src/index.ts`, so no build step needed.
+> The published package only ships `dist/`, so `bun link` consumers resolve from there too.
+> Use `bun run build:watch` during development to keep `dist/` fresh as you edit source.
 
 ---
 
@@ -37,24 +39,25 @@ Replace the generated `src/index.ts` with:
 
 ```ts
 import { Hono } from "hono";
-import { createWebhooks } from "clasp-sh";
+import { clasp, WebhookError } from "clasp-sh";
 
-const SECRET = "whsec_dGVzdC1zZWNyZXQta2V5"; // whsec_ + base64("test-secret-key")
+const SECRET = "whsec_dGVzdC1zZWNyZXQta2V5"; // see step 6 to generate a fresh one
 
-const webhooks = createWebhooks({ secret: SECRET });
+const webhooks = clasp({ secret: SECRET });
 
 const app = new Hono();
 
 app.post("/webhook", async (c) => {
-  const body = await c.req.text();
-
   try {
-    const event = await webhooks.verify(c.req.raw.headers, body);
+    const event = await webhooks.verify(c.req.raw);
     console.log("✓ verified:", JSON.stringify(event, null, 2));
     return c.json({ ok: true, type: event.type });
   } catch (err) {
-    console.error("✗ rejected:", String(err));
-    return c.json({ ok: false, error: String(err) }, 400);
+    if (err instanceof WebhookError) {
+      console.error(`✗ rejected (${err.code}):`, err.message);
+      return c.json({ ok: false, code: err.code }, 401);
+    }
+    throw err;
   }
 });
 
@@ -64,11 +67,11 @@ export default { port: 3000, fetch: app.fetch };
 ### `src/send.ts` — fires a webhook at the server
 
 ```ts
-import { createWebhooks } from "clasp-sh";
+import { clasp } from "clasp-sh";
 
 const SECRET = "whsec_dGVzdC1zZWNyZXQta2V5";
 
-const webhooks = createWebhooks({ secret: SECRET });
+const webhooks = clasp({ secret: SECRET });
 
 const result = await webhooks.send("http://localhost:3000/webhook", {
   type: "user.created",
@@ -115,7 +118,7 @@ Expected sender output:
 
 ## 5. Test edge cases
 
-### Bad signature (curl with a fake sig)
+### Bad signature
 
 ```bash
 curl -s -X POST http://localhost:3000/webhook \
@@ -126,20 +129,30 @@ curl -s -X POST http://localhost:3000/webhook \
   -d '{"type":"user.created","data":{}}' | jq
 ```
 
-Expected: `{ "ok": false, "error": "Error: Invalid webhook signature" }`
+Expected: `{ "ok": false, "code": "invalid_signature" }`
 
-### Stale timestamp (>5 min old)
+### Stale timestamp
 
 ```bash
 curl -s -X POST http://localhost:3000/webhook \
   -H "content-type: application/json" \
   -H "webhook-id: evt_test" \
   -H "webhook-timestamp: 1000000000" \
-  -H "webhook-signature: v1,invalidsignature" \
+  -H "webhook-signature: v1,whatever" \
   -d '{"type":"user.created","data":{}}' | jq
 ```
 
-Expected: `{ "ok": false, "error": "Error: Webhook timestamp is too old" }`
+Expected: `{ "ok": false, "code": "stale_timestamp" }`
+
+### Missing headers
+
+```bash
+curl -s -X POST http://localhost:3000/webhook \
+  -H "content-type: application/json" \
+  -d '{"type":"user.created","data":{}}' | jq
+```
+
+Expected: `{ "ok": false, "code": "missing_headers" }`
 
 ### Retry behavior — kill the server mid-test
 
@@ -156,8 +169,39 @@ Restart the server during that window and the next attempt will succeed.
 
 ## 6. Generate a fresh secret
 
+clasp accepts any string. Use whatever tool you like:
+
 ```bash
-bun -e "console.log('whsec_' + btoa(crypto.randomUUID()))"
+openssl rand -base64 32                                # raw base64
+echo "whsec_$(openssl rand -base64 32)"                # with whsec_ prefix
 ```
 
-Swap it in both `src/index.ts` and `src/send.ts` — both sides must use the same value.
+Swap it into both `src/index.ts` and `src/send.ts` — both sides must use the same value.
+
+---
+
+## 7. Receiving webhooks from external services (ngrok)
+
+`http://localhost:3000` isn't reachable from the internet, so external services
+(Stripe, GitHub, your buddy's app on another network) can't POST to it directly.
+
+For now, the suggested approach is to expose localhost with **ngrok** or **cloudflared**.
+
+Install ngrok, then in a second terminal:
+
+```bash
+ngrok http 3000
+```
+
+ngrok prints a public URL like `https://abc123.ngrok-free.app`. Append `/webhook`
+to get your receiver URL:
+
+```
+https://abc123.ngrok-free.app/webhook
+```
+
+Paste that into whatever external service wants to send webhooks to you. It POSTs
+through the tunnel, lands at your local receiver, and shows up in the harness log.
+
+> A hosted clasp relay (purpose-built for this) is on the roadmap as Step 2.
+> Until it ships, ngrok / cloudflared is the recommended path.

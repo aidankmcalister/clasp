@@ -1,27 +1,48 @@
 {
   "name": "clasp-sh",
-  "version": "0.1.0",
+  "version": "0.0.1",
+  "description": "Send and receive signed webhooks. Two functions. Zero dependencies.",
   "type": "module",
-  "module": "src/index.ts",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
-      "bun": "./src/index.ts",
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
     }
   },
+  "files": ["dist", "README.md", "LICENSE"],
+  "keywords": [
+    "webhooks",
+    "webhook",
+    "hmac",
+    "standard-webhooks",
+    "typescript"
+  ],
+  "license": "MIT",
+  "author": "Aidan McAlister",
+  "homepage": "https://clasp.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aidankmcalister/clasp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aidankmcalister/clasp/issues"
+  },
+  "sideEffects": false,
   "scripts": {
     "build": "tsdown",
+    "build:watch": "tsdown --watch",
     "test": "bun test",
     "lint": "biome check .",
-    "lint:fix": "biome check --write ."
+    "lint:fix": "biome check --write .",
+    "prepublishOnly": "bun run build"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/bun": "latest",
-    "tsdown": "^0.12.0"
+    "tsdown": "^0.22.0",
+    "unrun": "^0.3.0"
   },
   "peerDependencies": {
     "typescript": "^5"

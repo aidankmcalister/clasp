@@ -4,14 +4,13 @@ import type {
   AttemptResult,
   SendOptions,
   SendResult,
-  WebhookConfig,
   WebhookEvent,
 } from "./types.ts";
 
-export async function sendWebhook(
+export async function send<E extends WebhookEvent = WebhookEvent>(
   url: string,
-  event: WebhookEvent,
-  config: WebhookConfig,
+  event: E,
+  secret: string,
   options: SendOptions = {},
 ): Promise<SendResult> {
   const {
@@ -24,12 +23,7 @@ export async function sendWebhook(
   const body = JSON.stringify(event);
   const webhookId = event.id ?? crypto.randomUUID();
   const timestamp = Math.floor(Date.now() / 1000);
-  const signature = await signPayload(
-    webhookId,
-    timestamp,
-    body,
-    config.secret,
-  );
+  const signature = await signPayload(webhookId, timestamp, body, secret);
 
   const headers: Record<string, string> = {
     "content-type": "application/json",

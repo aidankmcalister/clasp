@@ -7,7 +7,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import { sendWebhook } from "../src/send.ts";
+import { send } from "../src/send.ts";
 
 const SECRET = "send-test-secret";
 const URL = "https://example.com/webhook";
@@ -17,7 +17,10 @@ let fetchMock: ReturnType<typeof mock>;
 let sleepSpy: ReturnType<typeof spyOn>;
 
 beforeEach(() => {
-  sleepSpy = spyOn(Bun, "sleep").mockResolvedValue();
+  sleepSpy = spyOn(globalThis, "setTimeout").mockImplementation((cb) => {
+    (cb as () => void)();
+    return 0 as unknown as ReturnType<typeof setTimeout>;
+  });
   fetchMock = mock(() => Promise.resolve(new Response("", { status: 200 })));
   globalThis.fetch = fetchMock as unknown as typeof fetch;
 });
@@ -26,9 +29,9 @@ afterEach(() => {
   sleepSpy.mockRestore();
 });
 
-describe("sendWebhook", () => {
+describe("send", () => {
   test("sends POST with correct signing headers", async () => {
-    const result = await sendWebhook(URL, EVENT, { secret: SECRET });
+    const result = await send(URL, EVENT, SECRET);
 
     expect(result.success).toBe(true);
     expect(result.statusCode).toBe(200);
@@ -37,24 +40,15 @@ describe("sendWebhook", () => {
     const [call] = fetchMock.mock.calls;
     const [calledUrl, init] = call as [string, RequestInit];
     expect(calledUrl).toBe(URL);
-    expect(
-      (init.headers as Record<string, string>)["webhook-signature"],
-    ).toMatch(/^v1,/);
-    expect(
-      (init.headers as Record<string, string>)["webhook-id"],
-    ).toBeDefined();
-    expect(
-      (init.headers as Record<string, string>)["webhook-timestamp"],
-    ).toBeDefined();
-    expect((init.headers as Record<string, string>)["content-type"]).toBe(
-      "application/json",
-    );
+    const h = init.headers as Record<string, string>;
+    expect(h["webhook-signature"]).toMatch(/^v1,/);
+    expect(h["webhook-id"]).toBeDefined();
+    expect(h["webhook-timestamp"]).toBeDefined();
+    expect(h["content-type"]).toBe("application/json");
   });
 
   test("uses event.id if provided", async () => {
-    const event = { ...EVENT, id: "evt_custom" };
-    await sendWebhook(URL, event, { secret: SECRET });
-
+    await send(URL, { ...EVENT, id: "evt_custom" }, SECRET);
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect((init.headers as Record<string, string>)["webhook-id"]).toBe(
       "evt_custom",
@@ -62,13 +56,7 @@ describe("sendWebhook", () => {
   });
 
   test("merges extra headers", async () => {
-    await sendWebhook(
-      URL,
-      EVENT,
-      { secret: SECRET },
-      { headers: { "x-custom": "value" } },
-    );
-
+    await send(URL, EVENT, SECRET, { headers: { "x-custom": "value" } });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect((init.headers as Record<string, string>)["x-custom"]).toBe("value");
   });
@@ -77,16 +65,11 @@ describe("sendWebhook", () => {
     fetchMock = mock(() => Promise.resolve(new Response("", { status: 503 })));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    const result = await sendWebhook(
-      URL,
-      EVENT,
-      { secret: SECRET },
-      { maxRetries: 2 },
-    );
+    const result = await send(URL, EVENT, SECRET, { maxRetries: 2 });
 
     expect(result.success).toBe(false);
     expect(result.statusCode).toBe(503);
-    expect(result.attempts).toHaveLength(3); // 1 initial + 2 retries
+    expect(result.attempts).toHaveLength(3);
     expect(sleepSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -94,12 +77,7 @@ describe("sendWebhook", () => {
     fetchMock = mock(() => Promise.reject(new Error("connection refused")));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    const result = await sendWebhook(
-      URL,
-      EVENT,
-      { secret: SECRET },
-      { maxRetries: 1 },
-    );
+    const result = await send(URL, EVENT, SECRET, { maxRetries: 1 });
 
     expect(result.success).toBe(false);
     expect(result.attempts[0]?.error).toBe("connection refused");
@@ -115,12 +93,7 @@ describe("sendWebhook", () => {
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    const result = await sendWebhook(
-      URL,
-      EVENT,
-      { secret: SECRET },
-      { maxRetries: 3 },
-    );
+    const result = await send(URL, EVENT, SECRET, { maxRetries: 3 });
 
     expect(result.success).toBe(true);
     expect(result.attempts).toHaveLength(2);
