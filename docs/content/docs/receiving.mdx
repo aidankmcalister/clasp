@@ -1,0 +1,94 @@
+---
+title: Receiving
+description: Verify incoming webhooks in any framework.
+icon: ShieldCheck
+---
+
+`verify()` checks an incoming webhook's signature, validates the timestamp, and parses the body. If anything is wrong, it throws a [`WebhookError`](/docs/errors).
+
+## Basic usage
+
+```ts
+import { verify } from "clasp-sh";
+
+const event = await verify({
+  secret: process.env.WEBHOOK_SECRET!,
+  request: req,
+});
+
+// event.type and event.data are verified and parsed
+```
+
+## What gets checked
+
+1. The required headers exist (`webhook-id`, `webhook-timestamp`, `webhook-signature`).
+2. The timestamp is within tolerance (default 5 minutes).
+3. The HMAC signature matches using a timing-safe comparison.
+4. The body is valid JSON with a `type` field.
+
+## Full example
+
+```ts
+import { verify, WebhookError } from "clasp-sh";
+
+export async function handleWebhook(request: Request): Promise<Response> {
+  try {
+    const event = await verify({
+      secret: process.env.WEBHOOK_SECRET!,
+      request,
+    });
+
+    console.log(event.type, event.data);
+    return Response.json({ ok: true });
+  } catch (err) {
+    if (err instanceof WebhookError) {
+      return Response.json({ error: err.code }, { status: 401 });
+    }
+    throw err;
+  }
+}
+```
+
+`verify()` accepts any Web standard `Request`. For frameworks that don't provide one (like Express), pass `{ headers, body }` instead:
+
+```ts
+const event = await verify({
+  secret: process.env.WEBHOOK_SECRET!,
+  request: { headers: req.headers, body: rawBody },
+});
+```
+
+<Callout type="warn">
+  Always use the **raw** request body for verification. Reserializing parsed
+  JSON can change byte order and break the signature.
+</Callout>
+
+## Timestamp tolerance
+
+Webhooks older than **5 minutes** are rejected by default. Override per call:
+
+```ts
+await verify({ secret: process.env.WEBHOOK_SECRET!, request, tolerance: 60 });  // 1 minute
+await verify({ secret: process.env.WEBHOOK_SECRET!, request, tolerance: 600 }); // 10 minutes
+```
+
+A tighter tolerance hardens against replay attacks but is less forgiving of clock skew. 5 minutes is a sensible default.
+
+## Idempotency
+
+Webhooks can arrive more than once. Use the `webhook-id` header to deduplicate:
+
+```ts
+const event = await verify({
+  secret: process.env.WEBHOOK_SECRET!,
+  request,
+});
+
+const webhookId = request.headers.get("webhook-id");
+if (webhookId && await alreadyProcessed(webhookId)) {
+  return Response.json({ ok: true });
+}
+
+await markProcessed(webhookId);
+// handle the event
+```

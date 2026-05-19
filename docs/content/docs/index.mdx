@@ -1,0 +1,91 @@
+---
+title: Getting started
+description: Install clasp and send your first signed webhook in under five minutes.
+icon: Rocket
+---
+
+clasp signs and verifies webhooks using the [Standard Webhooks](https://www.standardwebhooks.com/) spec. Two functions, zero config.
+
+## Install
+
+```npm
+npm install clasp-sh
+```
+
+## Set up a signing secret
+
+A signing secret is a random string shared between sender and receiver. It proves the webhook is authentic.
+
+Generate one:
+
+```bash
+echo "whsec_$(openssl rand -base64 32)"
+```
+
+Add it to your `.env`:
+
+```txt title=".env"
+WEBHOOK_SECRET=whsec_your_generated_secret_here
+```
+
+Both sides (sender and receiver) must use the same secret.
+
+## Send a webhook
+
+`send()` signs the payload with HMAC-SHA256 and POSTs it to the destination URL. It retries on failure and never throws on HTTP errors.
+
+```ts title="send.ts"
+import { send } from "clasp-sh";
+
+const result = await send({
+  secret: process.env.WEBHOOK_SECRET!,
+  url: "https://example.com/webhook",
+  event: { type: "user.created", data: { id: "usr_123" } },
+});
+
+console.log(result);
+// { success: true, statusCode: 200, attempts: 1 }
+```
+
+## Verify a webhook
+
+`verify()` checks the signature, validates the timestamp, and parses the body. If anything fails, it throws a [`WebhookError`](/docs/errors).
+
+```ts title="handler.ts"
+import { verify, WebhookError } from "clasp-sh";
+
+export async function handleWebhook(request: Request): Promise<Response> {
+  try {
+    const event = await verify({
+      secret: process.env.WEBHOOK_SECRET!,
+      request,
+    });
+
+    console.log(event.type, event.data);
+    return Response.json({ ok: true });
+  } catch (err) {
+    if (err instanceof WebhookError) {
+      return Response.json({ error: err.code }, { status: 401 });
+    }
+    throw err;
+  }
+}
+```
+
+`verify()` accepts any Web standard `Request`. For frameworks that don't provide one, pass `{ headers, body }` instead.
+
+## What just happened
+
+| Call | What it did |
+|---|---|
+| `send()` | Serialized the event, signed it with HMAC-SHA256, POSTed it with `webhook-id`, `webhook-timestamp`, and `webhook-signature` headers. |
+| `verify()` | Recomputed the HMAC, timing-safe compared, checked the timestamp, parsed the body. |
+
+## Next
+
+<Cards>
+  <Card title="Sending" href="/docs/sending" description="Retries, custom message IDs, the return shape." />
+  <Card title="Receiving" href="/docs/receiving" description="Verification, timestamp tolerance, idempotency." />
+  <Card title="Errors" href="/docs/errors" description="WebhookError codes and what they mean." />
+  <Card title="API reference" href="/docs/api" description="Complete public surface." />
+</Cards>

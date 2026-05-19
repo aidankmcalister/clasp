@@ -1,0 +1,90 @@
+---
+title: Sending
+description: Sign and POST webhooks with automatic retries.
+icon: Send
+---
+
+`send()` signs your payload, POSTs it to a URL, and retries on failure. It never throws on HTTP errors. It returns a `SendResult` instead.
+
+## Basic usage
+
+```ts
+import { send } from "clasp-sh";
+
+const result = await send({
+  secret: process.env.WEBHOOK_SECRET!,
+  url: "https://example.com/webhook",
+  event: { type: "user.created", data: { id: "usr_123" } },
+});
+
+result.success;    // boolean
+result.statusCode; // 200
+result.attempts;   // 1
+```
+
+## Headers
+
+Every request includes these headers:
+
+| Header | Value |
+|---|---|
+| `content-type` | `application/json` |
+| `webhook-id` | A UUID (or your `messageId` if provided) |
+| `webhook-timestamp` | Unix seconds at send time |
+| `webhook-signature` | `v1,<base64-hmac>` |
+
+## Retries
+
+Failed deliveries retry **3 times** by default with exponential backoff: 1s, 2s, 4s.
+
+Override per call:
+
+```ts
+await send({
+  secret: process.env.WEBHOOK_SECRET!,
+  url: "https://example.com/webhook",
+  event: { type: "user.created", data: { id: "usr_123" } },
+  maxRetries: 5,
+  timeout: 10_000,
+});
+```
+
+## Options
+
+| Option | Default | Description |
+|---|---|---|
+| `secret` | required | The signing secret |
+| `url` | required | Destination URL |
+| `event` | required | Event payload with `type` and `data` |
+| `messageId` | `crypto.randomUUID()` | Custom webhook ID for idempotency |
+| `maxRetries` | `3` | Max retry attempts after the initial request |
+| `timeout` | `30000` | Request timeout in milliseconds |
+
+## Custom message IDs
+
+Each send generates a UUID by default. Provide your own for idempotency:
+
+```ts
+await send({
+  secret: process.env.WEBHOOK_SECRET!,
+  url: "https://example.com/webhook",
+  event: { type: "user.created", data: { id: "usr_123" } },
+  messageId: "evt_abc123",
+});
+```
+
+The receiver can deduplicate using the `webhook-id` header.
+
+## Return shape
+
+```ts
+type SendResult = {
+  success: boolean;
+  statusCode?: number;
+  attempts: number;
+};
+```
+
+- `success` is `true` if any attempt got a 2xx response.
+- `attempts` is the total number of tries (1 on first-try success, up to `maxRetries + 1` on total failure).
+- `statusCode` is the last HTTP status received, or `undefined` if every attempt threw (network error, timeout).

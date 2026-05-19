@@ -1,0 +1,13 @@
+{
+  "root": true,
+  "pages": [
+    "index",
+    "sending",
+    "receiving",
+    "frameworks",
+    "errors",
+    "secrets",
+    "typed-events",
+    "api"
+  ]
+}

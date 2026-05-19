@@ -1,0 +1,86 @@
+---
+title: Typed events
+description: Add runtime validation with Zod or type guards after verify.
+icon: Braces
+---
+
+clasp checks that the body is JSON and has a `type` field. It does not validate `data` against a schema. If you need stronger guarantees, add validation after `verify()` returns.
+
+## With Zod
+
+Define your event schemas:
+
+```ts
+import { z } from "zod";
+
+const UserCreated = z.object({
+  type: z.literal("user.created"),
+  data: z.object({ id: z.string(), email: z.string() }),
+});
+
+const UserDeleted = z.object({
+  type: z.literal("user.deleted"),
+  data: z.object({ id: z.string() }),
+});
+
+const AppEvent = z.discriminatedUnion("type", [UserCreated, UserDeleted]);
+type AppEvent = z.infer<typeof AppEvent>;
+```
+
+Then validate after verify:
+
+```ts
+import { verify } from "clasp-sh";
+
+const raw = await verify({
+  secret: process.env.WEBHOOK_SECRET!,
+  request,
+});
+
+const event = AppEvent.parse(raw);
+
+switch (event.type) {
+  case "user.created":
+    event.data.email; // string
+    break;
+  case "user.deleted":
+    event.data.id; // string
+    break;
+}
+```
+
+## Without Zod
+
+A type guard works fine if you don't want a schema library:
+
+```ts
+type UserCreated = { type: "user.created"; data: { id: string; email: string } };
+type UserDeleted = { type: "user.deleted"; data: { id: string } };
+type AppEvent = UserCreated | UserDeleted;
+
+function isAppEvent(e: unknown): e is AppEvent {
+  const ev = e as AppEvent;
+  return ev.type === "user.created" || ev.type === "user.deleted";
+}
+
+const raw = await verify({
+  secret: process.env.WEBHOOK_SECRET!,
+  request,
+});
+
+if (!isAppEvent(raw)) throw new Error("Unknown event type");
+// raw is now typed as AppEvent
+```
+
+## Default typing
+
+Without validation, `verify()` returns `WebhookEvent`:
+
+```ts
+type WebhookEvent = {
+  type: string;
+  data: unknown;
+};
+```
+
+This is enough for routing by `event.type`. Add validation when the shape of `data` matters.

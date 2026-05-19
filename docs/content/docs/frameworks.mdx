@@ -1,0 +1,42 @@
+---
+title: Frameworks
+description: Use clasp with Next.js and other frameworks.
+icon: Blocks
+---
+
+clasp works with any framework that gives you access to the incoming request. These examples show how to wire up `verify()` as a webhook endpoint.
+
+## Next.js (App Router)
+
+Create a route handler at `app/api/webhook/route.ts`:
+
+```ts title="app/api/webhook/route.ts"
+import { verify, WebhookError } from "clasp-sh";
+
+export async function POST(request: Request) {
+  try {
+    const event = await verify({
+      secret: process.env.WEBHOOK_SECRET!,
+      request,
+    });
+
+    switch (event.type) {
+      case "user.created":
+        // handle user created
+        break;
+      case "user.deleted":
+        // handle user deleted
+        break;
+    }
+
+    return Response.json({ ok: true });
+  } catch (err) {
+    if (err instanceof WebhookError) {
+      return Response.json({ error: err.code }, { status: 401 });
+    }
+    throw err;
+  }
+}
+```
+
+Next.js App Router handlers receive a Web standard `Request`, so `verify()` works directly with no adapters.

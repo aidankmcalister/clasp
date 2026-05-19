@@ -1,0 +1,131 @@
+---
+title: API reference
+description: Complete public surface of clasp-sh.
+icon: BookOpen
+---
+
+clasp exports two functions, one error class, and a handful of types.
+
+```ts
+import { send, verify, WebhookError } from "clasp-sh";
+```
+
+## `send(options)`
+
+Sign and POST a webhook. Retries non-2xx responses with exponential backoff. Never throws on HTTP failure. Returns a `SendResult` instead.
+
+```ts
+function send(options: SendOptions): Promise<SendResult>;
+```
+
+| Param | Type | Description |
+|---|---|---|
+| `options.secret` | `string` | The signing secret |
+| `options.url` | `string` | Destination URL |
+| `options.event` | `WebhookEvent` | Event payload with `type` and `data` |
+| `options.messageId` | `string?` | Custom webhook ID (default: `crypto.randomUUID()`) |
+| `options.maxRetries` | `number?` | Max retry attempts (default: `3`) |
+| `options.timeout` | `number?` | Request timeout in ms (default: `30000`) |
+
+## `verify(options)`
+
+Verify an incoming webhook. Returns the parsed event or throws `WebhookError`.
+
+```ts
+function verify(options: VerifyOptions): Promise<WebhookEvent>;
+```
+
+| Param | Type | Description |
+|---|---|---|
+| `options.secret` | `string` | The signing secret |
+| `options.request` | `Request \| { headers, body }` | A Web standard `Request`, or a headers/body pair |
+| `options.tolerance` | `number?` | Max age in seconds (default: `300`) |
+
+## `WebhookError`
+
+Thrown by `verify()` on any verification failure.
+
+```ts
+class WebhookError extends Error {
+  code: WebhookErrorCode;
+  message: string;
+}
+
+type WebhookErrorCode =
+  | "missing_headers"
+  | "invalid_timestamp"
+  | "stale_timestamp"
+  | "invalid_signature"
+  | "invalid_body";
+```
+
+| Code | When it's thrown |
+|---|---|
+| `missing_headers` | One of the required webhook headers is missing |
+| `invalid_timestamp` | The `webhook-timestamp` header is not a valid number |
+| `stale_timestamp` | The timestamp is outside the tolerance window |
+| `invalid_signature` | HMAC verification failed |
+| `invalid_body` | The body is not valid JSON or is missing a `type` field |
+
+## Types
+
+### `WebhookEvent`
+
+```ts
+type WebhookEvent = {
+  type: string;
+  data: unknown;
+};
+```
+
+### `SendOptions`
+
+```ts
+type SendOptions = {
+  secret: string;
+  url: string;
+  event: WebhookEvent;
+  messageId?: string;
+  maxRetries?: number;
+  timeout?: number;
+};
+```
+
+### `SendResult`
+
+```ts
+type SendResult = {
+  success: boolean;
+  statusCode?: number;
+  attempts: number;
+};
+```
+
+### `VerifyOptions`
+
+```ts
+type VerifyOptions = {
+  secret: string;
+  request: Request | { headers: Headers | Record<string, string>; body: string };
+  tolerance?: number;
+};
+```
+
+## Defaults
+
+| Setting | Value |
+|---|---|
+| Max retries | `3` |
+| Backoff | `1s, 2s, 4s` (exponential) |
+| Request timeout | `30s` |
+| Timestamp tolerance | `5 minutes` (300s) |
+| Algorithm | `HMAC-SHA256` |
+| Signature format | `v1,{base64}` |
+
+## Spec
+
+clasp implements [Standard Webhooks](https://www.standardwebhooks.com/):
+
+- Headers: `webhook-id`, `webhook-timestamp`, `webhook-signature`
+- Signed payload: `{id}.{timestamp}.{body}`
+- Secrets prefixed with `whsec_` are base64-decoded. Otherwise the raw bytes are used.
